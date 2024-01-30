@@ -1,0 +1,59 @@
+# Xcode
+*.pbxuser
+*.xccheckout
+*.xcscmblueprint
+*.xcuserstate
+project.xcworkspace/
+xcuserdata/
+DerivedData/
+!default.xcworkspace
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# Swift Package Manager
+.build/
+.swiftpm/xcode/package.xcworkspace
+
+# App specific
+*.swp
+*.log
+.DS_Store
+*.xcuserstate
+
+# Environment variables
+.env*
+
+# Keystone Configuration files
+*.config
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk

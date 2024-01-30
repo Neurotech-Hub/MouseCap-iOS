@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -11,6 +11,8 @@
 		23A2DAC02B6836CC00376837 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23A2DABF2B6836CC00376837 /* ContentView.swift */; };
 		23A2DAC22B6836CD00376837 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 23A2DAC12B6836CD00376837 /* Assets.xcassets */; };
 		23A2DAC52B6836CD00376837 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 23A2DAC42B6836CD00376837 /* Preview Assets.xcassets */; };
+		23B50F072B69709300BCABBA /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 23B50F062B69709300BCABBA /* Launch Screen.storyboard */; };
+		23B50F0A2B6971C300BCABBA /* BLEAppHelpers in Frameworks */ = {isa = PBXBuildFile; productRef = 23B50F092B6971C300BCABBA /* BLEAppHelpers */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -19,6 +21,7 @@
 		23A2DABF2B6836CC00376837 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		23A2DAC12B6836CD00376837 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		23A2DAC42B6836CD00376837 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		23B50F062B69709300BCABBA /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -26,6 +29,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				23B50F0A2B6971C300BCABBA /* BLEAppHelpers in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -51,6 +55,7 @@
 		23A2DABC2B6836CC00376837 /* MouseCap */ = {
 			isa = PBXGroup;
 			children = (
+				23B50F062B69709300BCABBA /* Launch Screen.storyboard */,
 				23A2DABD2B6836CC00376837 /* MouseCapApp.swift */,
 				23A2DABF2B6836CC00376837 /* ContentView.swift */,
 				23A2DAC12B6836CD00376837 /* Assets.xcassets */,
@@ -83,6 +88,9 @@
 			dependencies = (
 			);
 			name = MouseCap;
+			packageProductDependencies = (
+				23B50F092B6971C300BCABBA /* BLEAppHelpers */,
+			);
 			productName = MouseCap;
 			productReference = 23A2DABA2B6836CC00376837 /* MouseCap.app */;
 			productType = "com.apple.product-type.application";
@@ -111,6 +119,9 @@
 				Base,
 			);
 			mainGroup = 23A2DAB12B6836CC00376837;
+			packageReferences = (
+				23B50F082B6971C300BCABBA /* XCLocalSwiftPackageReference "../BLEAppHelpers" */,
+			);
 			productRefGroup = 23A2DABB2B6836CC00376837 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -125,6 +136,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				23B50F072B69709300BCABBA /* Launch Screen.storyboard in Resources */,
 				23A2DAC52B6836CD00376837 /* Preview Assets.xcassets in Resources */,
 				23A2DAC22B6836CD00376837 /* Assets.xcassets in Resources */,
 			);
@@ -275,6 +287,7 @@
 				DEVELOPMENT_TEAM = WBU4CZ6AZJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app needs Bluetooth.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -304,6 +317,7 @@
 				DEVELOPMENT_TEAM = WBU4CZ6AZJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app needs Bluetooth.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -344,6 +358,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		23B50F082B6971C300BCABBA /* XCLocalSwiftPackageReference "../BLEAppHelpers" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../BLEAppHelpers;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		23B50F092B6971C300BCABBA /* BLEAppHelpers */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BLEAppHelpers;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 23A2DAB22B6836CC00376837 /* Project object */;
 }
