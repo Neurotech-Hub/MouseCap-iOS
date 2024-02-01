@@ -13,7 +13,11 @@ import BLEAppHelpers
 struct ContentView: View {
     let appName = "Mouse Cap Control"
     let nodeChracteristicLength = 20
-    @ObservedObject var bluetoothManager = BluetoothManager(serviceUUID: "EEE0", nodeRxUUID: "EEE1", nodeTxUUID: "EEE2")
+    @ObservedObject var bluetoothManager = BluetoothManager(
+        serviceUUID: BluetoothDeviceUUIDs.Node.serviceUUID,
+        nodeRxUUID: BluetoothDeviceUUIDs.Node.nodeRxUUID,
+        nodeTxUUID: BluetoothDeviceUUIDs.Node.nodeTxUUID
+    )
     @ObservedObject var terminalManager = TerminalManager.shared
     @State private var amplitude: Double = 1    // Ranges from 0 to 3000 uA
     @State private var frequency: Double = 130   // Ranges from 80 Hz to 160 Hz
@@ -183,7 +187,7 @@ struct ContentView: View {
                     terminalManager.addMessage("Terminal copied to clipboard")
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: 200) // Full width and fixed height
+            .frame(maxWidth: .infinity, maxHeight: 150) // Full width and fixed height
             .background(Color.black)
             .cornerRadius(5)
             .padding()
