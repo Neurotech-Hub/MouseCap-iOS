@@ -13,6 +13,7 @@ import BLEAppHelpers
 struct ContentView: View {
     let appName = "Mouse Cap Control"
     let nodeChracteristicLength = 20
+    @State private var debug = false
     @ObservedObject var bluetoothManager = BluetoothManager(
         serviceUUID: BluetoothDeviceUUIDs.Node.serviceUUID,
         nodeRxUUID: BluetoothDeviceUUIDs.Node.nodeRxUUID,
@@ -25,10 +26,34 @@ struct ContentView: View {
     @State private var activateOnDisconnect: Bool = false
     @State private var requireSync: Bool = false
     @State private var ignoreChanges = true
+    
+    var isSimulator: Bool {
+        #if targetEnvironment(simulator)
+                // Code is running in the Simulator
+                return true
+        #else
+                // Code is running on an actual device
+                return false
+        #endif
+    }
 
     var body: some View {
         VStack {
-            ClockView()
+            ZStack {
+                // Centered ClockView
+                ClockView()
+                
+                HStack {
+                    Spacer() // Pushes everything to the right
+                    Button(action: {
+                        self.debug.toggle() // Toggle the debug state
+                    }) {
+                        Text("debug")
+                            .foregroundColor(.gray)
+                    }
+                    .padding()
+                }
+            }
 
             Button(action: handleBluetoothAction) {
                 Text(bluetoothManager.isConnected ? "Disconnect" : "Connect")
@@ -43,15 +68,9 @@ struct ContentView: View {
             }
             .padding()
             
-            if bluetoothManager.isConnecting {
-                Text("Connecting...")
-                    .foregroundColor(.gray)
-                    .font(.caption)
-            }
-            
             Divider()
             
-            if bluetoothManager.isConnected {
+            if bluetoothManager.isConnected || debug || isSimulator {
                 VStack {
                     Text("Cap ID: XXXX")
                         .padding()
@@ -94,14 +113,14 @@ struct ContentView: View {
                     
                     // Pulse Width control
                     VStack {
-                        Slider(value: $pulseWidth, in: 10...100, step: 10)
+                        Slider(value: $pulseWidth, in: 10...1000, step: 10)
                             .onChange(of: pulseWidth) {
                                 if !ignoreChanges {
                                     requireSync = true
                                 }
                             }
                             .accentColor(.purple)
-                        Text("Pulse Width: \(pulseWidth, specifier: "%.0f")%")
+                        Text("Pulse Width: \(pulseWidth, specifier: "%.0f") μs")
                             .font(.caption)
                     }
                     
@@ -153,6 +172,9 @@ struct ContentView: View {
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
                 .padding([.leading, .trailing])
                 .onAppear {
+                    bluetoothManager.onDisconnect = {
+                        resetAllViewVars()
+                    }
                     bluetoothManager.onNodeTxValueUpdated = { dataString in
                         parseAndSetControlValues(from: dataString)
                     }
@@ -200,13 +222,16 @@ struct ContentView: View {
     
     func handleBluetoothAction() {
         if bluetoothManager.isConnected || bluetoothManager.isConnecting {
-            activateOnDisconnect = false // reset
-            requireSync = false // known state
             bluetoothManager.disconnect()
         } else {
             bluetoothManager.startScanning()
             ignoreChanges = true
         }
+    }
+    
+    func resetAllViewVars() {
+        activateOnDisconnect = false // reset
+        requireSync = false // known state
     }
     
     func toggleLED() {
