@@ -11,8 +11,8 @@ import CoreLocation
 import BLEAppHelpers
 
 struct ContentView: View {
-    let appName = "Mouse Cap Control"
-    let nodeChracteristicLength = 20
+    let appName = "Creed DBS Control"
+    let nodeChracteristicLength = 26
     @State private var debug = false
     @ObservedObject var bluetoothManager = BluetoothManager(
         serviceUUID: BluetoothDeviceUUIDs.Node.serviceUUID,
@@ -20,12 +20,13 @@ struct ContentView: View {
         nodeTxUUID: BluetoothDeviceUUIDs.Node.nodeTxUUID
     )
     @ObservedObject var terminalManager = TerminalManager.shared
-    @State private var amplitude: Double = 1    // Ranges from 0 to 3000 uA
+    @State private var amplitude: Double = 0    // Ranges from 0 to 3000 uA
     @State private var frequency: Double = 130   // Ranges from 80 Hz to 160 Hz
-    @State private var pulseWidth: Double = 50  // Ranges from 10% to 100%
+    @State private var pulseDuration: Double = 50  // Ranges from 10% to 100%
     @State private var activateOnDisconnect: Bool = false
     @State private var requireSync: Bool = false
     @State private var ignoreChanges = true
+    @State private var selectedCapID: String = "00"
     
     var isSimulator: Bool {
         #if targetEnvironment(simulator)
@@ -70,19 +71,31 @@ struct ContentView: View {
             
             Divider()
             
+            Spacer()
+            
             if bluetoothManager.isConnected || debug || isSimulator {
                 VStack {
-                    Text("Cap ID: XXXX")
-                        .padding()
-                    // Amplitude control
-                    VStack {
-                        Slider(value: $amplitude, in: 0...3000, step: 100)
-                            .accentColor(.mint)
-                            .onChange(of: amplitude) {
-                                if !ignoreChanges {
-                                    requireSync = true
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Cap ID:")
+                                .padding(.trailing, 5)
+                                .fontWeight(.bold)
+                            
+                            Picker("Select Cap ID", selection: $selectedCapID) {
+                                ForEach(0..<100) { number in
+                                    Text(String(format: "%02d", number)).tag(String(format: "%02d", number))
                                 }
                             }
+                            .pickerStyle(MenuPickerStyle())
+                            .frame(width: 80) // Adjust the width to make the picker smaller
+                            .onChange(of: selectedCapID) { oldValue, newValue in
+                                requireSync = true
+                            }
+                        }
+                    }
+                    
+                    // Amplitude control
+                    VStack {
                         HStack {
                             Text("OFF")
                                 .font(.caption)
@@ -91,15 +104,34 @@ struct ContentView: View {
                             
                             Spacer() // Pushes the next element towards center
                             
-                            Text("Amplitude: \(amplitude, specifier: "%.0f") μA")
-                                .font(.caption)
+                            let maxValue: Double = 600 // Maximum value for calculation
+                            let calculatedValue: Double = (amplitude / 100) * maxValue
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Amplitude: \(amplitude, specifier: "%.0f")% (\(calculatedValue, specifier: "%.0f") µA @ 1kΩ)")
+                                
+                                HStack {
+                                    Image(systemName: "checkmark.circle")
+                                        .foregroundColor(.green)
+                                    Text("Charge balancing is ON")
+                                }
+                            }
                             
                             Spacer() // Pushes the previous element towards center
                         }
-                    }
+                        
+                        Slider(value: $amplitude, in: 0...100, step: 1)
+                            .accentColor(.mint)
+                            .onChange(of: amplitude) {
+                                if !ignoreChanges {
+                                    requireSync = true
+                                }
+                            }
+                    }.padding(.top)
                     
                     // Frequency control
                     VStack {
+                        Text("Frequency: \(frequency, specifier: "%.0f") Hz")
                         Slider(value: $frequency, in: 80...160, step: 5)
                             .accentColor(.cyan)
                             .onChange(of: frequency) {
@@ -107,25 +139,22 @@ struct ContentView: View {
                                     requireSync = true
                                 }
                             }
-                        Text("Frequency: \(frequency, specifier: "%.0f") Hz")
-                            .font(.caption)
-                    }
+                    }.padding(.top)
                     
                     // Pulse Width control
                     VStack {
-                        Slider(value: $pulseWidth, in: 10...1000, step: 10)
-                            .onChange(of: pulseWidth) {
+                        Text("Pulse Duration: \(pulseDuration, specifier: "%.0f") μs")
+                        Slider(value: $pulseDuration, in: 10...1000, step: 10)
+                            .onChange(of: pulseDuration) {
                                 if !ignoreChanges {
                                     requireSync = true
                                 }
                             }
                             .accentColor(.purple)
-                        Text("Pulse Width: \(pulseWidth, specifier: "%.0f") μs")
-                            .font(.caption)
-                    }
+                    }.padding(.top)
                     
                     // Activate on disconnect toggle
-                    Toggle("Activate on disconnect", isOn: $activateOnDisconnect)
+                    Toggle("Activate Stimulation", isOn: $activateOnDisconnect)
                         .onChange(of: activateOnDisconnect) {
                             if !ignoreChanges {
                                 requireSync = true
@@ -188,8 +217,6 @@ struct ContentView: View {
                 }
             }
             
-            Spacer()
-            
             Divider()
             
             // terminal
@@ -243,10 +270,11 @@ struct ContentView: View {
         requireSync = false
         let amplitudeCommand = "A\(Int(amplitude))"
         let frequencyCommand = "F\(Int(frequency))"
-        let pulseWidthCommand = "P\(Int(pulseWidth))"
+        let pulseDurationCommand = "P\(Int(pulseDuration))"
         let activateOnDisconnectCommand = "G\(activateOnDisconnect ? 1 : 0)"
+        let capId = "N\(Int(selectedCapID) ?? 0)"
         
-        let commandString = "_\(amplitudeCommand),\(frequencyCommand),\(pulseWidthCommand),\(activateOnDisconnectCommand)"
+        let commandString = "_\(amplitudeCommand),\(frequencyCommand),\(pulseDurationCommand),\(activateOnDisconnectCommand),\(capId)"
         // Send commandString to the Bluetooth device
         if commandString.count <= nodeChracteristicLength {
             bluetoothManager.writeValue(commandString)
@@ -290,13 +318,22 @@ struct ContentView: View {
                 amplitude = Double(value)
             case "F": // Frequency
                 frequency = Double(value)
-            case "P": // Pulse Width
-                pulseWidth = Double(value)
+            case "P": // Pulse duration
+                pulseDuration = Double(value)
+            case "G":
+                activateOnDisconnect = (value != 0);
+            case "N":
+                updateSelectedCapID(to: value)
             default:
                 break // Unknown type, ignore
             }
         }
         requireSync = false    // Reset requireSync
+    }
+    
+    // Function to update selectedCapID programmatically
+    func updateSelectedCapID(to newCapID: Int) {
+        selectedCapID = String(format: "%02d", newCapID)
     }
 }
 
@@ -326,7 +363,6 @@ struct ClockView: View {
         return formatter
     }
 }
-
 
 #Preview {
     ContentView()
