@@ -144,7 +144,7 @@ struct ContentView: View {
                     // Pulse Width control
                     VStack {
                         Text("Pulse Duration: \(pulseDuration, specifier: "%.0f") μs")
-                        Slider(value: $pulseDuration, in: 10...1000, step: 10)
+                        Slider(value: $pulseDuration, in: 90...600, step: 30)
                             .onChange(of: pulseDuration) {
                                 if !ignoreChanges {
                                     requireSync = true
