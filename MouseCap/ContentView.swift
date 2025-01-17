@@ -27,6 +27,7 @@ struct ContentView: View {
     @State private var requireSync: Bool = false
     @State private var ignoreChanges = true
     @State private var selectedCapID: String = "00"
+    @State private var deviceBatteryLevel: Int = 88  // Add battery level state
     
     var isSimulator: Bool {
         #if targetEnvironment(simulator)
@@ -87,9 +88,19 @@ struct ContentView: View {
                                 }
                             }
                             .pickerStyle(MenuPickerStyle())
-                            .frame(width: 80) // Adjust the width to make the picker smaller
+                            .frame(width: 80)
                             .onChange(of: selectedCapID) { oldValue, newValue in
                                 requireSync = true
+                            }
+                            
+                            Spacer()
+                            
+                            // Battery indicator
+                            HStack(spacing: 4) {
+                                Image(systemName: deviceBatteryLevel > 20 ? "battery.100" : "battery.25")
+                                    .foregroundColor(deviceBatteryLevel > 20 ? .green : .red)
+                                Text("\(deviceBatteryLevel)%")
+                                    .foregroundColor(deviceBatteryLevel > 20 ? .primary : .red)
                             }
                         }
                     }
