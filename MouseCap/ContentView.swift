@@ -12,7 +12,9 @@ import BLEAppHelpers
 
 struct ContentView: View {
     let appName = "Creed DBS Control"
-    let nodeChracteristicLength = 26
+    var maxCharacteristicLength: Int {
+        return bluetoothManager.getMaximumWriteLength()
+    }
     @State private var debug = false
     @ObservedObject var bluetoothManager = BluetoothManager(
         serviceUUID: BluetoothDeviceUUIDs.Node.serviceUUID,
@@ -27,7 +29,8 @@ struct ContentView: View {
     @State private var requireSync: Bool = false
     @State private var ignoreChanges = true
     @State private var selectedCapID: String = "00"
-    @State private var deviceBatteryLevel: Int = 88  // Add battery level state
+    @State private var deviceBatteryLevel: Int = 100  // Add battery level state
+    @State private var hasReceivedInitialValues: Bool = false  // Track if we've received initial values
     
     var isSimulator: Bool {
         #if targetEnvironment(simulator)
@@ -76,156 +79,169 @@ struct ContentView: View {
             
             if bluetoothManager.isConnected || debug || isSimulator {
                 VStack {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("Cap ID:")
-                                .padding(.trailing, 5)
-                                .fontWeight(.bold)
-                            
-                            Picker("Select Cap ID", selection: $selectedCapID) {
-                                ForEach(0..<100) { number in
-                                    Text(String(format: "%02d", number)).tag(String(format: "%02d", number))
-                                }
-                            }
-                            .pickerStyle(MenuPickerStyle())
-                            .frame(width: 80)
-                            .onChange(of: selectedCapID) { oldValue, newValue in
-                                requireSync = true
-                            }
-                            
-                            Spacer()
-                            
-                            // Battery indicator
-                            HStack(spacing: 4) {
-                                Image(systemName: deviceBatteryLevel > 20 ? "battery.100" : "battery.25")
-                                    .foregroundColor(deviceBatteryLevel > 20 ? .green : .red)
-                                Text("\(deviceBatteryLevel)%")
-                                    .foregroundColor(deviceBatteryLevel > 20 ? .primary : .red)
-                            }
-                        }
-                    }
-                    
-                    // Amplitude control
                     VStack {
-                        HStack {
-                            Text("OFF")
-                                .font(.caption)
-                                .frame(alignment: .leading)
-                                .foregroundColor(.gray)
-                            
-                            Spacer() // Pushes the next element towards center
-                            
-                            let maxValue: Double = 600 // Maximum value for calculation
-                            let calculatedValue: Double = (amplitude / 100) * maxValue
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Amplitude: \(amplitude, specifier: "%.0f")% (\(calculatedValue, specifier: "%.0f") µA @ 1kΩ)")
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("Cap ID:")
+                                    .padding(.trailing, 5)
+                                    .fontWeight(.bold)
                                 
-                                HStack {
-                                    Image(systemName: "checkmark.circle")
-                                        .foregroundColor(.green)
-                                    Text("Charge balancing is ON")
+                                Picker("Select Cap ID", selection: $selectedCapID) {
+                                    ForEach(0..<100) { number in
+                                        Text(String(format: "%02d", number)).tag(String(format: "%02d", number))
+                                    }
+                                }
+                                .pickerStyle(MenuPickerStyle())
+                                .frame(width: 100)  // Increased width for 3 digits
+                                .fixedSize()  // Prevent wrapping
+                                .onChange(of: selectedCapID) { oldValue, newValue in
+                                    requireSync = true
+                                }
+                                
+                                Spacer()
+                                    .frame(minWidth: 20)  // Minimum spacing between elements
+                                
+                                // Battery indicator
+                                HStack(spacing: 4) {
+                                    Image(systemName: deviceBatteryLevel > 20 ? "battery.100" : "battery.25")
+                                        .foregroundColor(deviceBatteryLevel > 20 ? .green : .red)
+                                    Text("\(deviceBatteryLevel)%")
+                                        .foregroundColor(deviceBatteryLevel > 20 ? .primary : .red)
                                 }
                             }
-                            
-                            Spacer() // Pushes the previous element towards center
                         }
                         
-                        Slider(value: $amplitude, in: 0...100, step: 1)
-                            .accentColor(.mint)
-                            .onChange(of: amplitude) {
+                        // Amplitude control
+                        VStack {
+                            HStack {
+                                Text("OFF")
+                                    .font(.caption)
+                                    .frame(alignment: .leading)
+                                    .foregroundColor(.gray)
+                                
+                                Spacer() // Pushes the next element towards center
+                                
+                                let maxValue: Double = 600 // Maximum value for calculation
+                                let calculatedValue: Double = (amplitude / 100) * maxValue
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Amplitude: \(amplitude, specifier: "%.0f")% (\(calculatedValue, specifier: "%.0f") µA @ 1kΩ)")
+                                    
+                                    HStack {
+                                        Image(systemName: "checkmark.circle")
+                                            .foregroundColor(.green)
+                                        Text("Charge balancing is ON")
+                                    }
+                                }
+                                
+                                Spacer() // Pushes the previous element towards center
+                            }
+                            
+                            Slider(value: $amplitude, in: 0...100, step: 1)
+                                .accentColor(.mint)
+                                .onChange(of: amplitude) {
+                                    if !ignoreChanges {
+                                        requireSync = true
+                                    }
+                                }
+                        }.padding(.top)
+                        
+                        // Frequency control
+                        VStack {
+                            Text("Frequency: \(frequency, specifier: "%.0f") Hz")
+                            Slider(value: $frequency, in: 80...160, step: 5)
+                                .accentColor(.cyan)
+                                .onChange(of: frequency) {
+                                    if !ignoreChanges {
+                                        requireSync = true
+                                    }
+                                }
+                        }.padding(.top)
+                        
+                        // Pulse Width control
+                        VStack {
+                            Text("Pulse Duration: \(pulseDuration, specifier: "%.0f") μs")
+                            Slider(value: $pulseDuration, in: 90...600, step: 30)
+                                .onChange(of: pulseDuration) {
+                                    if !ignoreChanges {
+                                        requireSync = true
+                                    }
+                                }
+                                .accentColor(.purple)
+                        }.padding(.top)
+                        
+                        // Activate on disconnect toggle
+                        Toggle("Activate Stimulation", isOn: $activateOnDisconnect)
+                            .onChange(of: activateOnDisconnect) {
                                 if !ignoreChanges {
                                     requireSync = true
                                 }
                             }
-                    }.padding(.top)
+                            .padding()
+                    }
+                    .padding([.leading, .trailing, .top],30)
                     
-                    // Frequency control
-                    VStack {
-                        Text("Frequency: \(frequency, specifier: "%.0f") Hz")
-                        Slider(value: $frequency, in: 80...160, step: 5)
-                            .accentColor(.cyan)
-                            .onChange(of: frequency) {
-                                if !ignoreChanges {
-                                    requireSync = true
-                                }
-                            }
-                    }.padding(.top)
+                    Spacer()
                     
-                    // Pulse Width control
-                    VStack {
-                        Text("Pulse Duration: \(pulseDuration, specifier: "%.0f") μs")
-                        Slider(value: $pulseDuration, in: 90...600, step: 30)
-                            .onChange(of: pulseDuration) {
-                                if !ignoreChanges {
-                                    requireSync = true
-                                }
-                            }
-                            .accentColor(.purple)
-                    }.padding(.top)
-                    
-                    // Activate on disconnect toggle
-                    Toggle("Activate Stimulation", isOn: $activateOnDisconnect)
-                        .onChange(of: activateOnDisconnect) {
-                            if !ignoreChanges {
-                                requireSync = true
-                            }
+                    HStack {
+                        Button(action: syncControls) {
+                            Text("Sync")
+                                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
+                                .foregroundColor(.white)
+                                .background(Color.blue)
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(requireSync ? Color.red : Color.clear, lineWidth: 5) // Red outline when requireSync is true
+                                )
                         }
-                        .padding()
-                }
-                .padding([.leading, .trailing, .top],30)
-                
-                Spacer()
-                
-                HStack {
-                    Button(action: syncControls) {
-                        Text("Sync")
-                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
-                            .foregroundColor(.white)
-                            .background(Color.blue)
-                            .cornerRadius(8)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(requireSync ? Color.red : Color.clear, lineWidth: 5) // Red outline when requireSync is true
-                            )
+                        .padding(5)
+                        
+                        Button(action: toggleLED) {
+                            Text("Toggle LED")
+                                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
+                                .foregroundColor(.white)
+                                .background(.green)
+                                .cornerRadius(8)
+                        }
+                        .padding(5)
+                        
+                        Button(action: readBuffer) {
+                            Text("Read")
+                                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
+                                .foregroundColor(.white)
+                                .background(.gray)
+                                .cornerRadius(8)
+                        }
+                        .padding(5)
                     }
-                    .padding(5)
-                    
-                    Button(action: toggleLED) {
-                        Text("Toggle LED")
-                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
-                            .foregroundColor(.white)
-                            .background(.green)
-                            .cornerRadius(8)
-                    }
-                    .padding(5)
-                    
-                    Button(action: readBuffer) {
-                        Text("Read")
-                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
-                            .foregroundColor(.white)
-                            .background(.gray)
-                            .cornerRadius(8)
-                    }
-                    .padding(5)
-                }
-                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
-                .padding([.leading, .trailing])
-                .onAppear {
-                    bluetoothManager.onDisconnect = {
-                        resetAllViewVars()
-                    }
-                    bluetoothManager.onNodeTxValueUpdated = { dataString in
-                        parseAndSetControlValues(from: dataString)
-                    }
-                    bluetoothManager.readValue() // Trigger the read operation
-                    
-                    // Set ignoreChanges to false after a delay of 1 second
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                        requireSync = false
-                        ignoreChanges = false
+                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
+                    .padding([.leading, .trailing])
+                    .onAppear {
+                        bluetoothManager.onDisconnect = {
+                            resetAllViewVars()
+                        }
+                        bluetoothManager.onNodeTxValueUpdated = { dataString in
+                            parseAndSetControlValues(from: dataString)
+                        }
+                        
+                        // Request configuration values before reading
+                        bluetoothManager.writeValue("_1")
+                        bluetoothManager.readValue()
+                        
+                        // Request additional values
+                        bluetoothManager.writeValue("_2")
+                        bluetoothManager.readValue()
+                        
+                        // Set ignoreChanges to false after a delay of 1 second
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                            requireSync = false
+                            ignoreChanges = false
+                        }
                     }
                 }
+                .opacity(!hasReceivedInitialValues && !debug && !isSimulator ? 0.25 : 1.0)
+                .disabled(!hasReceivedInitialValues && !debug && !isSimulator)
             }
             
             Divider()
@@ -261,6 +277,7 @@ struct ContentView: View {
     func handleBluetoothAction() {
         if bluetoothManager.isConnected || bluetoothManager.isConnecting {
             bluetoothManager.disconnect()
+            hasReceivedInitialValues = false  // Reset the state on disconnect
         } else {
             bluetoothManager.startScanning()
             ignoreChanges = true
@@ -268,8 +285,9 @@ struct ContentView: View {
     }
     
     func resetAllViewVars() {
-        activateOnDisconnect = false // reset
-        requireSync = false // known state
+        activateOnDisconnect = false
+        requireSync = false
+        hasReceivedInitialValues = false  // Reset on disconnect
     }
     
     func toggleLED() {
@@ -287,24 +305,29 @@ struct ContentView: View {
         
         let commandString = "_\(amplitudeCommand),\(frequencyCommand),\(pulseDurationCommand),\(activateOnDisconnectCommand),\(capId)"
         // Send commandString to the Bluetooth device
-        if commandString.count <= nodeChracteristicLength {
+        if commandString.count <= maxCharacteristicLength {
             bluetoothManager.writeValue(commandString)
             terminalManager.addMessage("Synced: \(commandString)")
         } else {
-            terminalManager.addMessage("Command exceeds characteristic length")
+            terminalManager.addMessage("Command exceeds characteristic length (\(commandString.count) > \(maxCharacteristicLength))")
         }
-        
     }
     
     func readBuffer() {
-        bluetoothManager.onNodeTxValueUpdated = { newValue in
-            terminalManager.addMessage(newValue)
-        }
+        // First request configuration values
+        bluetoothManager.writeValue("_1")
         bluetoothManager.readValue()
+        
+        // Then request additional values
+        bluetoothManager.writeValue("_2")
+        bluetoothManager.readValue()
+        
+        terminalManager.addMessage("Reading configuration values...")
     }
     
     func parseAndSetControlValues(from dataString: String) {
         terminalManager.addMessage("Syncing node...")
+        terminalManager.addMessage("Raw data: \(dataString)")  // Add raw data debug message
         // Check if the string starts with "_"
         guard dataString.starts(with: "_") else {
             return
@@ -332,14 +355,20 @@ struct ContentView: View {
             case "P": // Pulse duration
                 pulseDuration = Double(value)
             case "G":
-                activateOnDisconnect = (value != 0);
+                activateOnDisconnect = (value != 0)
             case "N":
                 updateSelectedCapID(to: value)
+            case "V": // Battery voltage in millivolts
+                let minVoltage: Double = 1400 // 1.4V in mV
+                let maxVoltage: Double = 2800 // 2.8V in mV
+                let percentage = max(0, min(100, ((Double(value) - minVoltage) / (maxVoltage - minVoltage)) * 100))
+                deviceBatteryLevel = Int(round(percentage))
             default:
                 break // Unknown type, ignore
             }
         }
         requireSync = false    // Reset requireSync
+        hasReceivedInitialValues = true     // Mark that we've received initial values
     }
     
     // Function to update selectedCapID programmatically
