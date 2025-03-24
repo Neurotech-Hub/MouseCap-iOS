@@ -2,7 +2,7 @@
 
 A SwiftUI-based iOS application for controlling and monitoring DBS (Deep Brain Stimulation) devices via Bluetooth Low Energy (BLE).
 
-![Mouse with brain implant running happily](@gaidica_mouse_with_brain_implant_happy_running_942428e5-3631-4e29-a92e-40996ced92e0%202.jpg)
+![Mouse with brain implant running happily](./MouseCapAppIcon.jpg)
 
 ## Features
 
