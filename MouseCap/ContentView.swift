@@ -272,6 +272,7 @@ struct ContentView: View {
         .onAppear {
             terminalManager.addMessage("Hello, \(appName).")
         }
+        .preferredColorScheme(.dark)  // Force dark mode
     }
     
     func handleBluetoothAction() {
