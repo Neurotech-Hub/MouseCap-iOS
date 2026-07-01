@@ -51,8 +51,21 @@ struct ContentView: View {
     @State private var deviceBatteryLevel: Int = 100
     @State private var firmwareVersionWire: Int = 0
     @State private var awaitingConfigBlock1Response = false
-    @State private var suppressModeSyncFlag = false
+    @State private var isApplyingDeviceValues = false
+    @State private var deviceSnapshot = DeviceSettingsSnapshot()
     @State private var hasReceivedInitialValues: Bool = false
+
+    private struct DeviceSettingsSnapshot: Equatable {
+        var stimulationMode: StimulationMode = .continuous
+        var amplitude: Double = 0
+        var frequency: Double = 130
+        var pulseDuration: Double = 50
+        var burstPeriodMs: Double = 30_000
+        var intraBurstFrequency: Double = 130
+        var burstDurationMs: Double = 10_000
+        var activateOnDisconnect: Bool = false
+        var capID: String = "00"
+    }
 
     private var firmwareVersionLabel: String {
         DBSProtocol.formatFirmwareVersion(wireValue: firmwareVersionWire)
@@ -80,7 +93,7 @@ struct ContentView: View {
         if bluetoothManager.isConnected {
             return .red
         } else if bluetoothManager.isConnecting {
-            return .gray
+            return .green
         } else {
             return .black
         }
@@ -173,7 +186,7 @@ struct ContentView: View {
                                 let capID = String(format: "%02d", number)
                                 Button(capID) {
                                     selectedCapID = capID
-                                    requireSync = true
+                                    refreshRequireSync()
                                 }
                             }
                         } label: {
@@ -215,7 +228,7 @@ struct ContentView: View {
                                 amplitude: $amplitude,
                                 pulseDuration: $pulseDuration,
                                 ignoreChanges: ignoreChanges,
-                                onValueChanged: { requireSync = true }
+                                onValueChanged: { refreshRequireSync() }
                             )
 
                             Picker("Stimulation Mode", selection: $stimulationMode) {
@@ -226,16 +239,14 @@ struct ContentView: View {
                             .pickerStyle(.segmented)
                             .padding(.top, 4)
                             .onChange(of: stimulationMode) { _, _ in
-                                if !ignoreChanges && !suppressModeSyncFlag {
-                                    requireSync = true
-                                }
+                                refreshRequireSync()
                             }
 
                             if stimulationMode == .continuous {
                                 ContinuousControlsView(
                                     frequency: $frequency,
                                     ignoreChanges: ignoreChanges,
-                                    onValueChanged: { requireSync = true }
+                                    onValueChanged: { refreshRequireSync() }
                                 )
                             } else {
                                 BurstControlsView(
@@ -243,28 +254,20 @@ struct ContentView: View {
                                     intraBurstFrequency: $intraBurstFrequency,
                                     burstDurationMs: $burstDurationMs,
                                     ignoreChanges: ignoreChanges,
-                                    onValueChanged: { requireSync = true }
+                                    onValueChanged: { refreshRequireSync() }
                                 )
                             }
                         }
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                     }
-                    .scrollDismissesKeyboard(.immediately)
-                    .toolbar {
-                        ToolbarItemGroup(placement: .keyboard) {
-                            Spacer()
-                            Button("Done") {
-                                dismissKeyboard()
-                            }
-                        }
-                    }
+                    .scrollDismissesKeyboard(.interactively)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                     Toggle("Activate Stimulation", isOn: $activateOnDisconnect)
                         .onChange(of: activateOnDisconnect) {
                             if !ignoreChanges {
-                                requireSync = true
+                                refreshRequireSync()
                             }
                         }
                         .padding(.horizontal, 16)
@@ -319,7 +322,7 @@ struct ContentView: View {
                     requestConfiguration()
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                        requireSync = false
+                        commitDeviceSnapshot()
                         ignoreChanges = false
                     }
                 }
@@ -366,6 +369,7 @@ struct ContentView: View {
         hasReceivedInitialValues = false
         firmwareVersionWire = 0
         awaitingConfigBlock1Response = false
+        deviceSnapshot = DeviceSettingsSnapshot()
     }
 
     func toggleLED() {
@@ -374,8 +378,6 @@ struct ContentView: View {
     }
 
     func syncControls() {
-        requireSync = false
-
         let capID = String(format: "%02d", Int(selectedCapID) ?? 0)
         let commandString: String
 
@@ -400,16 +402,17 @@ struct ContentView: View {
             )
         }
 
-        sendCommand(commandString)
-    }
-
-    func sendCommand(_ commandString: String) {
         if commandString.count <= maxCharacteristicLength {
-            bluetoothManager.writeValue(commandString)
-            terminalManager.addMessage("Synced: \(commandString)")
+            sendCommand(commandString)
+            commitDeviceSnapshot()
         } else {
             terminalManager.addMessage("Command exceeds characteristic length (\(commandString.count) > \(maxCharacteristicLength))")
         }
+    }
+
+    func sendCommand(_ commandString: String) {
+        bluetoothManager.writeValue(commandString)
+        terminalManager.addMessage("Synced: \(commandString)")
     }
 
     func readBuffer() {
@@ -439,14 +442,14 @@ struct ContentView: View {
         let components = dataString.dropFirst().split(separator: ",")
         let isNewFirmware = DBSProtocol.responseIncludesFirmwareVersion(dataString)
 
+        isApplyingDeviceValues = true
+
         for component in components {
             guard let (key, value) = DBSProtocol.parseKeyValue(from: component) else { continue }
 
             switch key {
             case .mode:
-                suppressModeSyncFlag = true
                 stimulationMode = value == DBSProtocol.modeBurst ? .burst : .continuous
-                suppressModeSyncFlag = false
             case .amplitude:
                 amplitude = Double(value)
             case .frequency:
@@ -470,6 +473,8 @@ struct ContentView: View {
             }
         }
 
+        isApplyingDeviceValues = false
+
         if awaitingConfigBlock1Response {
             awaitingConfigBlock1Response = false
             if isNewFirmware {
@@ -479,7 +484,7 @@ struct ContentView: View {
             }
         }
 
-        requireSync = false
+        commitDeviceSnapshot()
         hasReceivedInitialValues = true
     }
 
@@ -487,13 +492,28 @@ struct ContentView: View {
         selectedCapID = String(format: "%02d", newCapID)
     }
 
-    private func dismissKeyboard() {
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder),
-            to: nil,
-            from: nil,
-            for: nil
+    private func currentSettingsSnapshot() -> DeviceSettingsSnapshot {
+        DeviceSettingsSnapshot(
+            stimulationMode: stimulationMode,
+            amplitude: amplitude,
+            frequency: frequency,
+            pulseDuration: pulseDuration,
+            burstPeriodMs: burstPeriodMs,
+            intraBurstFrequency: intraBurstFrequency,
+            burstDurationMs: burstDurationMs,
+            activateOnDisconnect: activateOnDisconnect,
+            capID: selectedCapID
         )
+    }
+
+    private func refreshRequireSync() {
+        guard !ignoreChanges, !isApplyingDeviceValues else { return }
+        requireSync = currentSettingsSnapshot() != deviceSnapshot
+    }
+
+    private func commitDeviceSnapshot() {
+        deviceSnapshot = currentSettingsSnapshot()
+        requireSync = false
     }
 }
 

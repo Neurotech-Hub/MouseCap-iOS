@@ -4,6 +4,82 @@
 //
 
 import SwiftUI
+import UIKit
+
+struct DecimalPadTextField: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isEditing: Bool
+    var onCommit: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIView(context: Context) -> UITextField {
+        let textField = UITextField()
+        textField.keyboardType = .decimalPad
+        textField.borderStyle = .roundedRect
+        textField.delegate = context.coordinator
+        textField.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.textChanged(_:)),
+            for: .editingChanged
+        )
+        textField.inputAccessoryView = Self.makeToolbar(coordinator: context.coordinator)
+        return textField
+    }
+
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        context.coordinator.parent = self
+        if uiView.text != text {
+            uiView.text = text
+        }
+    }
+
+    private static func makeToolbar(coordinator: Coordinator) -> UIToolbar {
+        let toolbar = UIToolbar()
+        toolbar.sizeToFit()
+        let spacer = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
+        let done = UIBarButtonItem(
+            title: "Done",
+            style: .done,
+            target: coordinator,
+            action: #selector(Coordinator.doneTapped)
+        )
+        toolbar.items = [spacer, done]
+        return toolbar
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: DecimalPadTextField
+
+        init(_ parent: DecimalPadTextField) {
+            self.parent = parent
+        }
+
+        @objc func textChanged(_ sender: UITextField) {
+            parent.text = sender.text ?? ""
+        }
+
+        @objc func doneTapped() {
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil,
+                from: nil,
+                for: nil
+            )
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            parent.isEditing = true
+        }
+
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            parent.isEditing = false
+            parent.onCommit()
+        }
+    }
+}
 
 enum StimulationMode: String, CaseIterable {
     case continuous = "Continuous"
@@ -59,7 +135,7 @@ struct NumericParameterRow: View {
 
     @State private var selectedUnit: TimeUnit
     @State private var textValue: String = ""
-    @FocusState private var isFocused: Bool
+    @State private var isEditing = false
 
     init(
         label: String,
@@ -110,15 +186,12 @@ struct NumericParameterRow: View {
                 .font(.subheadline)
 
             HStack(spacing: 8) {
-                TextField("Value", text: $textValue)
-                    .keyboardType(.decimalPad)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 80)
-                    .focused($isFocused)
-                    .onSubmit { commitTextValue() }
-                    .onChange(of: isFocused) { _, focused in
-                        if !focused { commitTextValue() }
-                    }
+                DecimalPadTextField(
+                    text: $textValue,
+                    isEditing: $isEditing,
+                    onCommit: commitTextValue
+                )
+                .frame(width: 80, height: 34)
 
                 Stepper("", value: Binding(
                     get: { displayValue },
@@ -143,7 +216,7 @@ struct NumericParameterRow: View {
         .padding(.top, 8)
         .onAppear { syncTextFromBase() }
         .onChange(of: baseValue) { _, _ in
-            if !isFocused { syncTextFromBase() }
+            if !isEditing { syncTextFromBase() }
         }
     }
 
@@ -278,6 +351,10 @@ struct BurstControlsView: View {
     var ignoreChanges: Bool
     var onValueChanged: () -> Void
 
+    private var burstsMayRunContinuously: Bool {
+        burstDurationMs > burstPeriodMs
+    }
+
     var body: some View {
         NumericParameterRow(
             label: "Burst Period",
@@ -314,5 +391,16 @@ struct BurstControlsView: View {
                 if !ignoreChanges { onValueChanged() }
             }
         )
+
+        if burstsMayRunContinuously {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                Text("Burst duration is longer than burst period. Stimulation may run continuously.")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+            }
+            .padding(.top, 6)
+        }
     }
 }
