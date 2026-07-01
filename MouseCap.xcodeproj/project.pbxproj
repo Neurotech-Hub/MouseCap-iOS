@@ -14,6 +14,9 @@
 		23B50F072B69709300BCABBA /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 23B50F062B69709300BCABBA /* Launch Screen.storyboard */; };
 		23B50F0A2B6971C300BCABBA /* BLEAppHelpers in Frameworks */ = {isa = PBXBuildFile; productRef = 23B50F092B6971C300BCABBA /* BLEAppHelpers */; };
 		23B50F0E2B6BD92E00BCABBA /* CBUUID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23B50F0D2B6BD92E00BCABBA /* CBUUID.swift */; };
+		23E1A0012E4C000100F2A5E8 /* ParameterInputViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E1A0002E4C000100F2A5E8 /* ParameterInputViews.swift */; };
+		23E1A0032E4C000100F2A5E8 /* InfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E1A0022E4C000100F2A5E8 /* InfoView.swift */; };
+		23E1A0052E4C000200F2A5E8 /* DBSProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E1A0042E4C000200F2A5E8 /* DBSProtocol.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,6 +28,9 @@
 		23B50F062B69709300BCABBA /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
 		23B50F0D2B6BD92E00BCABBA /* CBUUID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CBUUID.swift; sourceTree = "<group>"; };
 		23D77B722E4B75B400F2A5E8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		23E1A0002E4C000100F2A5E8 /* ParameterInputViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParameterInputViews.swift; sourceTree = "<group>"; };
+		23E1A0022E4C000100F2A5E8 /* InfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InfoView.swift; sourceTree = "<group>"; };
+		23E1A0042E4C000200F2A5E8 /* DBSProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DBSProtocol.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +68,9 @@
 				23B50F062B69709300BCABBA /* Launch Screen.storyboard */,
 				23A2DABD2B6836CC00376837 /* MouseCapApp.swift */,
 				23A2DABF2B6836CC00376837 /* ContentView.swift */,
+				23E1A0002E4C000100F2A5E8 /* ParameterInputViews.swift */,
+				23E1A0022E4C000100F2A5E8 /* InfoView.swift */,
+				23E1A0042E4C000200F2A5E8 /* DBSProtocol.swift */,
 				23B50F0D2B6BD92E00BCABBA /* CBUUID.swift */,
 				23A2DAC12B6836CD00376837 /* Assets.xcassets */,
 				23A2DAC32B6836CD00376837 /* Preview Content */,
@@ -108,7 +117,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1520;
-				LastUpgradeCheck = 1520;
+				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					23A2DAB92B6836CC00376837 = {
 						CreatedOnToolsVersion = 15.2;
@@ -156,6 +165,9 @@
 			files = (
 				23B50F0E2B6BD92E00BCABBA /* CBUUID.swift in Sources */,
 				23A2DAC02B6836CC00376837 /* ContentView.swift in Sources */,
+				23E1A0012E4C000100F2A5E8 /* ParameterInputViews.swift in Sources */,
+				23E1A0032E4C000100F2A5E8 /* InfoView.swift in Sources */,
+				23E1A0052E4C000200F2A5E8 /* DBSProtocol.swift in Sources */,
 				23A2DABE2B6836CC00376837 /* MouseCapApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -198,6 +210,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = WBU4CZ6AZJ;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -221,6 +234,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -261,6 +275,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = WBU4CZ6AZJ;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -277,6 +292,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -290,7 +306,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"MouseCap/Preview Content\"";
-				DEVELOPMENT_TEAM = WBU4CZ6AZJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MouseCap/Info.plist;
@@ -322,7 +337,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"MouseCap/Preview Content\"";
-				DEVELOPMENT_TEAM = WBU4CZ6AZJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MouseCap/Info.plist;

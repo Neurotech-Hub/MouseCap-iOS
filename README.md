@@ -36,35 +36,47 @@ A SwiftUI-based iOS application for controlling and monitoring DBS (Deep Brain S
 
 The app is built using SwiftUI and follows MVVM architecture patterns. It uses CoreBluetooth for BLE communication.
 
+### Burst stimulation
+
+Burst mode uses keys `M1`, `BP`, `IF`, and `BD` in addition to shared keys `A`, `P`, `G`, and `N`. See [MCU_BLE_PROTOCOL.md](MCU_BLE_PROTOCOL.md) for the complete command set.
+
 ## Data Protocol
 
-The app communicates with the DBS device using a simple text-based protocol. All messages start with an underscore ("_") followed by comma-separated key-value pairs.
+The app communicates with the DBS device using a text-based protocol documented in **[MCU_BLE_PROTOCOL.md](MCU_BLE_PROTOCOL.md)** (authoritative reference for firmware developers).
 
-### Message Format
+### Quick reference
+
+| Key | Parameter |
+|-----|-----------|
+| `M` | Mode: 0 = continuous, 1 = burst |
+| `A` | Amplitude (0–100%) |
+| `F` | Frequency, Hz (continuous only) |
+| `P` | Pulse duration, µs |
+| `BP` | Burst period, ms (burst only) |
+| `IF` | Intra-burst frequency, Hz (burst only) |
+| `BD` | Burst duration, ms (burst only) |
+| `G` | Activate on disconnect (0 or 1) |
+| `N` | Cap ID (0–99) |
+| `V` | Battery voltage, mV (device → app) |
+| `FW` | Firmware version (device → app; `1` = v0.1) |
+
+### Example messages
+
+Continuous sync:
 ```
-_<key1><value1>,<key2><value2>,...
+_M0,A50,F130,P90,G0,N0
 ```
 
-### Supported Parameters
-
-- `A`: Amplitude (0-100%)
-- `F`: Frequency (80-160 Hz)
-- `P`: Pulse Duration (90-600 μs)
-- `G`: Activate on Disconnect (0 or 1)
-- `N`: Cap ID (0-99)
-- `V`: Battery Voltage (1400-2800 mV)
-
-### Example Message
+Burst sync:
 ```
-_A50,F130,P90,G0,N00,V2100
+_M1,A50,P90,BP30000,IF130,BD10000,G0,N0
 ```
-This message sets:
-- Amplitude to 50%
-- Frequency to 130 Hz
-- Pulse Duration to 90 μs
-- Activate on Disconnect to false
-- Cap ID to 00
-- Battery Voltage to 2100 mV
+
+### MTU / Write Size
+
+The BGM220S peripheral should request MTU exchange (≥ 131 for 128-byte payload, or up to 247). iOS participates automatically as the central — no explicit MTU request is required in the app.
+
+After connect, the terminal logs negotiated MTU and per-write payload limits (`withResponse` and `withoutResponse`). The app uses `writeWithoutResponse` on `nodeRx` when the characteristic supports it, otherwise `writeWithResponse`. Sync commands are rejected if they exceed `getMaximumWriteLength()`.
 
 ## License
 

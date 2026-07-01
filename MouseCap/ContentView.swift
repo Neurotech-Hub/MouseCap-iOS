@@ -10,179 +10,266 @@ import Foundation
 import CoreLocation
 import BLEAppHelpers
 
+enum AppTab: String, CaseIterable {
+    case controls = "Controls"
+    case terminal = "Terminal"
+    case info = "Info"
+
+    var icon: String {
+        switch self {
+        case .controls: return "slider.horizontal.3"
+        case .terminal: return "terminal"
+        case .info: return "info.circle"
+        }
+    }
+}
+
 struct ContentView: View {
     let appName = "Creed DBS Control"
     var maxCharacteristicLength: Int {
         return bluetoothManager.getMaximumWriteLength()
     }
     @State private var debug = false
-    @ObservedObject var bluetoothManager = BluetoothManager(
+    @StateObject private var bluetoothManager = BluetoothManager(
         serviceUUID: BluetoothDeviceUUIDs.Node.serviceUUID,
         nodeRxUUID: BluetoothDeviceUUIDs.Node.nodeRxUUID,
         nodeTxUUID: BluetoothDeviceUUIDs.Node.nodeTxUUID
     )
-    @ObservedObject var terminalManager = TerminalManager.shared
-    @State private var amplitude: Double = 0    // Ranges from 0 to 3000 uA
-    @State private var frequency: Double = 130   // Ranges from 80 Hz to 160 Hz
-    @State private var pulseDuration: Double = 50  // Ranges from 10% to 100%
+    @ObservedObject private var terminalManager = TerminalManager.shared
+    @State private var selectedTab: AppTab = .controls
+    @State private var stimulationMode: StimulationMode = .continuous
+    @State private var amplitude: Double = 0
+    @State private var frequency: Double = 130
+    @State private var pulseDuration: Double = 50
+    @State private var burstPeriodMs: Double = 30_000
+    @State private var intraBurstFrequency: Double = 130
+    @State private var burstDurationMs: Double = 10_000
     @State private var activateOnDisconnect: Bool = false
     @State private var requireSync: Bool = false
     @State private var ignoreChanges = true
     @State private var selectedCapID: String = "00"
-    @State private var deviceBatteryLevel: Int = 100  // Add battery level state
-    @State private var hasReceivedInitialValues: Bool = false  // Track if we've received initial values
-    
+    @State private var deviceBatteryLevel: Int = 100
+    @State private var firmwareVersionWire: Int = 0
+    @State private var awaitingConfigBlock1Response = false
+    @State private var suppressModeSyncFlag = false
+    @State private var hasReceivedInitialValues: Bool = false
+
+    private var firmwareVersionLabel: String {
+        DBSProtocol.formatFirmwareVersion(wireValue: firmwareVersionWire)
+    }
+
     var isSimulator: Bool {
         #if targetEnvironment(simulator)
-                // Code is running in the Simulator
-                return true
+        return true
         #else
-                // Code is running on an actual device
-                return false
+        return false
         #endif
     }
 
+    private var connectButtonTitle: String {
+        if bluetoothManager.isConnected {
+            return "Disconnect"
+        } else if bluetoothManager.isConnecting {
+            return "Connecting..."
+        } else {
+            return "Connect"
+        }
+    }
+
+    private var connectButtonBackground: Color {
+        if bluetoothManager.isConnected {
+            return .red
+        } else if bluetoothManager.isConnecting {
+            return .gray
+        } else {
+            return .black
+        }
+    }
+
     var body: some View {
-        VStack {
-            ZStack {
-                // Centered ClockView
-                ClockView()
-                
-                HStack {
-                    Spacer() // Pushes everything to the right
-                    Button(action: {
-                        self.debug.toggle() // Toggle the debug state
-                    }) {
-                        Text("debug")
-                            .foregroundColor(.gray)
-                    }
-                    .padding()
+        VStack(spacing: 0) {
+            Group {
+                switch selectedTab {
+                case .controls:
+                    controlsTab
+                case .terminal:
+                    terminalTab
+                case .info:
+                    InfoView()
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            Button(action: handleBluetoothAction) {
-                Text(bluetoothManager.isConnected ? "Disconnect" : "Connect")
-                    .frame(minWidth: 100, minHeight: 44)
-                    .foregroundColor(.white)
-                    .background(bluetoothManager.isConnected ? Color.red : Color.black)
-                    .cornerRadius(8) // Apply cornerRadius here to affect the background
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white, lineWidth: 2)
-                    )
-            }
-            .padding()
-            
             Divider()
-            
-            Spacer()
-            
+
+            footerTabBar
+        }
+        .edgesIgnoringSafeArea(.bottom)
+        .onAppear {
+            terminalManager.addMessage("Hello, \(appName).")
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private var footerTabBar: some View {
+        HStack {
+            ForEach(AppTab.allCases, id: \.self) { tab in
+                Button {
+                    selectedTab = tab
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 20))
+                        Text(tab.rawValue)
+                            .font(.caption2)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .foregroundColor(selectedTab == tab ? .accentColor : .gray)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .background(Color(white: 0.1))
+    }
+
+    private var controlsTab: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center) {
+                ClockView()
+
+                Spacer()
+
+                Button(action: handleBluetoothAction) {
+                    Text(connectButtonTitle)
+                        .frame(minWidth: 100, minHeight: 36)
+                        .foregroundColor(.white)
+                        .background(connectButtonBackground)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white, lineWidth: 2)
+                        )
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+
+//            Button(action: { debug.toggle() }) {
+//                Text("debug")
+//                    .foregroundColor(.gray)
+//            }
+
             if bluetoothManager.isConnected || debug || isSimulator {
-                VStack {
-                    VStack {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text("Cap ID:")
-                                    .padding(.trailing, 5)
-                                    .fontWeight(.bold)
-                                
-                                Picker("Select Cap ID", selection: $selectedCapID) {
-                                    ForEach(0..<100) { number in
-                                        Text(String(format: "%02d", number)).tag(String(format: "%02d", number))
-                                    }
-                                }
-                                .pickerStyle(MenuPickerStyle())
-                                .frame(width: 100)  // Increased width for 3 digits
-                                .fixedSize()  // Prevent wrapping
-                                .onChange(of: selectedCapID) { oldValue, newValue in
+                VStack(spacing: 0) {
+                    HStack(alignment: .center, spacing: 8) {
+                        Text("Cap ID:")
+                            .fontWeight(.bold)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+
+                        Menu {
+                            ForEach(0..<100, id: \.self) { number in
+                                let capID = String(format: "%02d", number)
+                                Button(capID) {
+                                    selectedCapID = capID
                                     requireSync = true
                                 }
-                                
-                                Spacer()
-                                    .frame(minWidth: 20)  // Minimum spacing between elements
-                                
-                                // Battery indicator
-                                HStack(spacing: 4) {
-                                    Image(systemName: deviceBatteryLevel > 20 ? "battery.100" : "battery.25")
-                                        .foregroundColor(deviceBatteryLevel > 20 ? .green : .red)
-                                    Text("\(deviceBatteryLevel)%")
-                                        .foregroundColor(deviceBatteryLevel > 20 ? .primary : .red)
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(selectedCapID)
+                                    .font(.body.monospacedDigit())
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption2)
+                            }
+                            .foregroundColor(.accentColor)
+                        }
+                        .fixedSize(horizontal: true, vertical: false)
+
+                        Spacer(minLength: 8)
+
+                        Text(firmwareVersionLabel)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+
+                        HStack(spacing: 4) {
+                            Image(systemName: deviceBatteryLevel > 20 ? "battery.100" : "battery.25")
+                                .foregroundColor(deviceBatteryLevel > 20 ? .green : .red)
+                            Text("\(deviceBatteryLevel)%")
+                                .foregroundColor(deviceBatteryLevel > 20 ? .primary : .red)
+                                .lineLimit(1)
+                        }
+                        .layoutPriority(1)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 10) {
+                            SharedStimulationControlsView(
+                                amplitude: $amplitude,
+                                pulseDuration: $pulseDuration,
+                                ignoreChanges: ignoreChanges,
+                                onValueChanged: { requireSync = true }
+                            )
+
+                            Picker("Stimulation Mode", selection: $stimulationMode) {
+                                ForEach(StimulationMode.allCases, id: \.self) { mode in
+                                    Text(mode.rawValue).tag(mode)
                                 }
+                            }
+                            .pickerStyle(.segmented)
+                            .padding(.top, 4)
+                            .onChange(of: stimulationMode) { _, _ in
+                                if !ignoreChanges && !suppressModeSyncFlag {
+                                    requireSync = true
+                                }
+                            }
+
+                            if stimulationMode == .continuous {
+                                ContinuousControlsView(
+                                    frequency: $frequency,
+                                    ignoreChanges: ignoreChanges,
+                                    onValueChanged: { requireSync = true }
+                                )
+                            } else {
+                                BurstControlsView(
+                                    burstPeriodMs: $burstPeriodMs,
+                                    intraBurstFrequency: $intraBurstFrequency,
+                                    burstDurationMs: $burstDurationMs,
+                                    ignoreChanges: ignoreChanges,
+                                    onValueChanged: { requireSync = true }
+                                )
                             }
                         }
-                        
-                        // Amplitude control
-                        VStack {
-                            HStack {
-                                Text("OFF")
-                                    .font(.caption)
-                                    .frame(alignment: .leading)
-                                    .foregroundColor(.gray)
-                                
-                                Spacer() // Pushes the next element towards center
-                                
-                                let maxValue: Double = 600 // Maximum value for calculation
-                                let calculatedValue: Double = (amplitude / 100) * maxValue
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Amplitude: \(amplitude, specifier: "%.0f")% (\(calculatedValue, specifier: "%.0f") µA @ 1kΩ)")
-                                    
-                                    HStack {
-                                        Image(systemName: "checkmark.circle")
-                                            .foregroundColor(.green)
-                                        Text("Charge balancing is ON")
-                                    }
-                                }
-                                
-                                Spacer() // Pushes the previous element towards center
-                            }
-                            
-                            Slider(value: $amplitude, in: 0...100, step: 1)
-                                .accentColor(.mint)
-                                .onChange(of: amplitude) {
-                                    if !ignoreChanges {
-                                        requireSync = true
-                                    }
-                                }
-                        }.padding(.top)
-                        
-                        // Frequency control
-                        VStack {
-                            Text("Frequency: \(frequency, specifier: "%.0f") Hz")
-                            Slider(value: $frequency, in: 80...160, step: 5)
-                                .accentColor(.cyan)
-                                .onChange(of: frequency) {
-                                    if !ignoreChanges {
-                                        requireSync = true
-                                    }
-                                }
-                        }.padding(.top)
-                        
-                        // Pulse Width control
-                        VStack {
-                            Text("Pulse Duration: \(pulseDuration, specifier: "%.0f") μs")
-                            Slider(value: $pulseDuration, in: 90...600, step: 30)
-                                .onChange(of: pulseDuration) {
-                                    if !ignoreChanges {
-                                        requireSync = true
-                                    }
-                                }
-                                .accentColor(.purple)
-                        }.padding(.top)
-                        
-                        // Activate on disconnect toggle
-                        Toggle("Activate Stimulation", isOn: $activateOnDisconnect)
-                            .onChange(of: activateOnDisconnect) {
-                                if !ignoreChanges {
-                                    requireSync = true
-                                }
-                            }
-                            .padding()
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
                     }
-                    .padding([.leading, .trailing, .top],30)
-                    
-                    Spacer()
-                    
+                    .scrollDismissesKeyboard(.immediately)
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") {
+                                dismissKeyboard()
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+                    Toggle("Activate Stimulation", isOn: $activateOnDisconnect)
+                        .onChange(of: activateOnDisconnect) {
+                            if !ignoreChanges {
+                                requireSync = true
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+
                     HStack {
                         Button(action: syncControls) {
                             Text("Sync")
@@ -192,11 +279,11 @@ struct ContentView: View {
                                 .cornerRadius(8)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .stroke(requireSync ? Color.red : Color.clear, lineWidth: 5) // Red outline when requireSync is true
+                                        .stroke(requireSync ? Color.red : Color.clear, lineWidth: 5)
                                 )
                         }
                         .padding(5)
-                        
+
                         Button(action: toggleLED) {
                             Text("Toggle LED")
                                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
@@ -205,7 +292,7 @@ struct ContentView: View {
                                 .cornerRadius(8)
                         }
                         .padding(5)
-                        
+
                         Button(action: readBuffer) {
                             Text("Read")
                                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
@@ -216,96 +303,107 @@ struct ContentView: View {
                         .padding(5)
                     }
                     .frame(minWidth: 0, maxWidth: .infinity, minHeight: 44)
-                    .padding([.leading, .trailing])
-                    .onAppear {
-                        bluetoothManager.onDisconnect = {
-                            resetAllViewVars()
-                        }
-                        bluetoothManager.onNodeTxValueUpdated = { dataString in
-                            parseAndSetControlValues(from: dataString)
-                        }
-                        
-                        // Request configuration values before reading
-                        bluetoothManager.writeValue("_1")
-                        bluetoothManager.readValue()
-                        
-                        // Request additional values
-                        bluetoothManager.writeValue("_2")
-                        bluetoothManager.readValue()
-                        
-                        // Set ignoreChanges to false after a delay of 1 second
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                            requireSync = false
-                            ignoreChanges = false
-                        }
-                    }
+                    .padding([.leading, .trailing, .bottom], 8)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .opacity(!hasReceivedInitialValues && !debug && !isSimulator ? 0.25 : 1.0)
                 .disabled(!hasReceivedInitialValues && !debug && !isSimulator)
-            }
-            
-            Divider()
-            
-            // terminal
-            ScrollView {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(terminalManager.receivedMessages, id: \.self) { message in
-                        Text(message)
-                            .foregroundColor(Color.green)
-                            .font(.system(size: 11, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading) // Align text to the left
+                .onAppear {
+                    bluetoothManager.onDisconnect = {
+                        resetAllViewVars()
+                    }
+                    bluetoothManager.onNodeTxValueUpdated = { dataString in
+                        parseAndSetControlValues(from: dataString)
+                    }
+
+                    requestConfiguration()
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        requireSync = false
+                        ignoreChanges = false
                     }
                 }
-                .padding(5)
-                .onTapGesture {
-                    let textToCopy = terminalManager.receivedMessages.joined(separator: "\n")
-                    UIPasteboard.general.string = textToCopy
-                    terminalManager.addMessage("Terminal copied to clipboard")
+            } else {
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var terminalTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(terminalManager.receivedMessages, id: \.self) { message in
+                    Text(message)
+                        .foregroundColor(Color.green)
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: 150) // Full width and fixed height
-            .background(Color.black)
-            .cornerRadius(5)
-            .padding()
+            .padding(5)
+            .onTapGesture {
+                let textToCopy = terminalManager.receivedMessages.joined(separator: "\n")
+                UIPasteboard.general.string = textToCopy
+                terminalManager.addMessage("Terminal copied to clipboard")
+            }
         }
-        .edgesIgnoringSafeArea(.bottom) // Ignore safe area to extend to the bottom edge
-        .onAppear {
-            terminalManager.addMessage("Hello, \(appName).")
-        }
-        .preferredColorScheme(.dark)  // Force dark mode
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
     }
-    
+
     func handleBluetoothAction() {
         if bluetoothManager.isConnected || bluetoothManager.isConnecting {
             bluetoothManager.disconnect()
-            hasReceivedInitialValues = false  // Reset the state on disconnect
+            hasReceivedInitialValues = false
         } else {
             bluetoothManager.startScanning()
             ignoreChanges = true
         }
     }
-    
+
     func resetAllViewVars() {
         activateOnDisconnect = false
         requireSync = false
-        hasReceivedInitialValues = false  // Reset on disconnect
+        hasReceivedInitialValues = false
+        firmwareVersionWire = 0
+        awaitingConfigBlock1Response = false
     }
-    
+
     func toggleLED() {
         bluetoothManager.writeValue("_L1")
         terminalManager.addMessage("Toggled LED")
     }
-    
+
     func syncControls() {
         requireSync = false
-        let amplitudeCommand = "A\(Int(amplitude))"
-        let frequencyCommand = "F\(Int(frequency))"
-        let pulseDurationCommand = "P\(Int(pulseDuration))"
-        let activateOnDisconnectCommand = "G\(activateOnDisconnect ? 1 : 0)"
-        let capId = "N\(Int(selectedCapID) ?? 0)"
-        
-        let commandString = "_\(amplitudeCommand),\(frequencyCommand),\(pulseDurationCommand),\(activateOnDisconnectCommand),\(capId)"
-        // Send commandString to the Bluetooth device
+
+        let capID = String(format: "%02d", Int(selectedCapID) ?? 0)
+        let commandString: String
+
+        switch stimulationMode {
+        case .continuous:
+            commandString = DBSProtocol.buildContinuousCommand(
+                amplitude: Int(amplitude),
+                frequency: Int(frequency),
+                pulseDuration: Int(pulseDuration),
+                activateOnDisconnect: activateOnDisconnect,
+                capID: capID
+            )
+        case .burst:
+            commandString = DBSProtocol.buildBurstCommand(
+                amplitude: Int(amplitude),
+                pulseDuration: Int(pulseDuration),
+                burstPeriodMs: Int(burstPeriodMs),
+                intraBurstFrequency: Int(intraBurstFrequency),
+                burstDurationMs: Int(burstDurationMs),
+                activateOnDisconnect: activateOnDisconnect,
+                capID: capID
+            )
+        }
+
+        sendCommand(commandString)
+    }
+
+    func sendCommand(_ commandString: String) {
         if commandString.count <= maxCharacteristicLength {
             bluetoothManager.writeValue(commandString)
             terminalManager.addMessage("Synced: \(commandString)")
@@ -313,90 +411,108 @@ struct ContentView: View {
             terminalManager.addMessage("Command exceeds characteristic length (\(commandString.count) > \(maxCharacteristicLength))")
         }
     }
-    
+
     func readBuffer() {
-        // First request configuration values
+        requestConfiguration()
+    }
+
+    func requestConfiguration() {
+        awaitingConfigBlock1Response = true
         bluetoothManager.writeValue("_1")
         bluetoothManager.readValue()
-        
-        // Then request additional values
+        terminalManager.addMessage("Reading configuration (_1)...")
+    }
+
+    func requestLegacyConfigBlock2() {
         bluetoothManager.writeValue("_2")
         bluetoothManager.readValue()
-        
-        terminalManager.addMessage("Reading configuration values...")
+        terminalManager.addMessage("Legacy device — reading configuration (_2)...")
     }
-    
+
     func parseAndSetControlValues(from dataString: String) {
         terminalManager.addMessage("Syncing node...")
-        terminalManager.addMessage("Raw data: \(dataString)")  // Add raw data debug message
-        // Check if the string starts with "_"
+        terminalManager.addMessage("Raw data: \(dataString)")
         guard dataString.starts(with: "_") else {
             return
         }
-        
-        // Remove the leading "_" and split the string by commas
+
         let components = dataString.dropFirst().split(separator: ",")
-        
+        let isNewFirmware = DBSProtocol.responseIncludesFirmwareVersion(dataString)
+
         for component in components {
-            // Ensure each component has at least 2 characters (e.g., "A1")
-            guard component.count >= 2 else { continue }
-            
-            let type = component.prefix(1)   // The control type (e.g., 'A', 'F', 'P')
-            let valueString = component.dropFirst() // The rest of the string representing the value
-            
-            // Convert the value part to an integer
-            guard let value = Int(valueString) else { continue }
-            
-            // Set the appropriate variable based on the type
-            switch type {
-            case "A": // Amplitude
+            guard let (key, value) = DBSProtocol.parseKeyValue(from: component) else { continue }
+
+            switch key {
+            case .mode:
+                suppressModeSyncFlag = true
+                stimulationMode = value == DBSProtocol.modeBurst ? .burst : .continuous
+                suppressModeSyncFlag = false
+            case .amplitude:
                 amplitude = Double(value)
-            case "F": // Frequency
+            case .frequency:
                 frequency = Double(value)
-            case "P": // Pulse duration
+            case .pulseDuration:
                 pulseDuration = Double(value)
-            case "G":
+            case .burstPeriod:
+                burstPeriodMs = Double(value)
+            case .intraBurstFrequency:
+                intraBurstFrequency = Double(value)
+            case .burstDuration:
+                burstDurationMs = Double(value)
+            case .activateOnDisconnect:
                 activateOnDisconnect = (value != 0)
-            case "N":
+            case .capID:
                 updateSelectedCapID(to: value)
-            case "V": // Battery voltage in millivolts
-                let minVoltage: Double = 1400 // 1.4V in mV
-                let maxVoltage: Double = 2800 // 2.8V in mV
-                let percentage = max(0, min(100, ((Double(value) - minVoltage) / (maxVoltage - minVoltage)) * 100))
-                deviceBatteryLevel = Int(round(percentage))
-            default:
-                break // Unknown type, ignore
+            case .batteryVoltage:
+                deviceBatteryLevel = DBSProtocol.batteryPercentage(fromMillivolts: value)
+            case .firmwareVersion:
+                firmwareVersionWire = value
             }
         }
-        requireSync = false    // Reset requireSync
-        hasReceivedInitialValues = true     // Mark that we've received initial values
+
+        if awaitingConfigBlock1Response {
+            awaitingConfigBlock1Response = false
+            if isNewFirmware {
+                terminalManager.addMessage("Firmware \(firmwareVersionLabel) — single config block (_1)")
+            } else {
+                requestLegacyConfigBlock2()
+            }
+        }
+
+        requireSync = false
+        hasReceivedInitialValues = true
     }
-    
-    // Function to update selectedCapID programmatically
+
     func updateSelectedCapID(to newCapID: Int) {
         selectedCapID = String(format: "%02d", newCapID)
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
     }
 }
 
 struct ClockView: View {
     @State private var currentTime = Date()
-    
+
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    
+
     var body: some View {
-        VStack {
-            Text("\(currentTime, formatter: Self.localFormatter)")
-                .font(.largeTitle)
-                .onReceive(timer) { _ in
-                    self.currentTime = Date()
-                }
-            HStack {
-                //                Text("\(currentTime.timeIntervalSince1970, specifier: "%.0f")")
-                Text("\(String(format: "0x%08X", Int32(currentTime.timeIntervalSince1970)))")
+        Text("\(currentTime, formatter: Self.localFormatter)")
+            .font(.title2.monospacedDigit())
+            .onReceive(timer) { _ in
+                self.currentTime = Date()
             }
-        }
+//        HStack {
+//            Text("\(String(format: "0x%08X", Int32(currentTime.timeIntervalSince1970)))")
+//        }
     }
-    
+
     static var localFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
@@ -405,6 +521,9 @@ struct ClockView: View {
     }
 }
 
-#Preview {
-    ContentView()
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+            .preferredColorScheme(.dark)
+    }
 }
