@@ -50,10 +50,22 @@ struct ContentView: View {
     @State private var selectedCapID: String = "00"
     @State private var deviceBatteryLevel: Int = 100
     @State private var firmwareVersionWire: Int = 0
-    @State private var awaitingConfigBlock1Response = false
+    @State private var configReadPhase: ConfigReadPhase = .idle
+    @State private var configRetryCount = 0
     @State private var isApplyingDeviceValues = false
     @State private var deviceSnapshot = DeviceSettingsSnapshot()
     @State private var hasReceivedInitialValues: Bool = false
+
+    private enum ConfigReadPhase {
+        case idle
+        case block1
+        case block2
+    }
+
+    private let maxConfigRetries = 4
+    @State private var configRetryTask: Task<Void, Never>?
+    @State private var configTimeoutTask: Task<Void, Never>?
+    @State private var connectDelayTask: Task<Void, Never>?
 
     private struct DeviceSettingsSnapshot: Equatable {
         var stimulationMode: StimulationMode = .continuous
@@ -120,6 +132,14 @@ struct ContentView: View {
         .edgesIgnoringSafeArea(.bottom)
         .onAppear {
             terminalManager.addMessage("Hello, \(appName).")
+            setupBluetoothCallbacks()
+        }
+        .onChange(of: bluetoothManager.isConnected) { _, isConnected in
+            if isConnected {
+                beginConfigReadAfterConnect()
+            } else {
+                cancelConfigReadTasks()
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -311,21 +331,6 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .opacity(!hasReceivedInitialValues && !debug && !isSimulator ? 0.25 : 1.0)
                 .disabled(!hasReceivedInitialValues && !debug && !isSimulator)
-                .onAppear {
-                    bluetoothManager.onDisconnect = {
-                        resetAllViewVars()
-                    }
-                    bluetoothManager.onNodeTxValueUpdated = { dataString in
-                        parseAndSetControlValues(from: dataString)
-                    }
-
-                    requestConfiguration()
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                        commitDeviceSnapshot()
-                        ignoreChanges = false
-                    }
-                }
             } else {
                 Spacer(minLength: 0)
             }
@@ -368,8 +373,98 @@ struct ContentView: View {
         requireSync = false
         hasReceivedInitialValues = false
         firmwareVersionWire = 0
-        awaitingConfigBlock1Response = false
+        configReadPhase = .idle
+        configRetryCount = 0
+        cancelConfigReadTasks()
         deviceSnapshot = DeviceSettingsSnapshot()
+        ignoreChanges = true
+    }
+
+    func setupBluetoothCallbacks() {
+        bluetoothManager.onDisconnect = {
+            resetAllViewVars()
+        }
+        bluetoothManager.onNodeTxValueUpdated = { dataString in
+            parseAndSetControlValues(from: dataString)
+        }
+    }
+
+    func beginConfigReadAfterConnect() {
+        ignoreChanges = true
+        hasReceivedInitialValues = false
+        configRetryCount = 0
+        cancelConfigReadTasks()
+
+        connectDelayTask?.cancel()
+        connectDelayTask = Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard bluetoothManager.isConnected else { return }
+                requestConfiguration()
+            }
+        }
+    }
+
+    func cancelConfigReadTasks() {
+        connectDelayTask?.cancel()
+        connectDelayTask = nil
+        configRetryTask?.cancel()
+        configRetryTask = nil
+        configTimeoutTask?.cancel()
+        configTimeoutTask = nil
+    }
+
+    func scheduleConfigReadTimeout() {
+        configTimeoutTask?.cancel()
+        configTimeoutTask = Task {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard !hasReceivedInitialValues, bluetoothManager.isConnected else { return }
+                terminalManager.addMessage("Configuration read timed out — enabling controls.")
+                finishInitialConfigRead()
+            }
+        }
+    }
+
+    func scheduleConfigRetryIfNeeded() {
+        guard configReadPhase != .idle, !hasReceivedInitialValues else { return }
+        guard configRetryCount < maxConfigRetries else {
+            terminalManager.addMessage("Configuration read failed — enabling controls.")
+            finishInitialConfigRead()
+            return
+        }
+
+        configRetryTask?.cancel()
+        configRetryCount += 1
+        let attempt = configRetryCount
+        let phase = configReadPhase
+        configRetryTask = Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard bluetoothManager.isConnected, !hasReceivedInitialValues else { return }
+                terminalManager.addMessage("Retrying configuration read (\(attempt)/\(maxConfigRetries))...")
+                if phase == .block1 {
+                    bluetoothManager.writeValue("_1")
+                } else if phase == .block2 {
+                    bluetoothManager.writeValue("_2")
+                }
+                bluetoothManager.readValue()
+            }
+        }
+    }
+
+    func finishInitialConfigRead() {
+        configReadPhase = .idle
+        configRetryCount = 0
+        cancelConfigReadTasks()
+        commitDeviceSnapshot()
+        hasReceivedInitialValues = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            ignoreChanges = false
+        }
     }
 
     func toggleLED() {
@@ -420,13 +515,20 @@ struct ContentView: View {
     }
 
     func requestConfiguration() {
-        awaitingConfigBlock1Response = true
+        guard bluetoothManager.isConnected else { return }
+
+        configReadPhase = .block1
+        configRetryCount = 0
+        cancelConfigReadTasks()
+
         bluetoothManager.writeValue("_1")
         bluetoothManager.readValue()
         terminalManager.addMessage("Reading configuration (_1)...")
+        scheduleConfigReadTimeout()
     }
 
     func requestLegacyConfigBlock2() {
+        configReadPhase = .block2
         bluetoothManager.writeValue("_2")
         bluetoothManager.readValue()
         terminalManager.addMessage("Legacy device — reading configuration (_2)...")
@@ -436,6 +538,7 @@ struct ContentView: View {
         terminalManager.addMessage("Syncing node...")
         terminalManager.addMessage("Raw data: \(dataString)")
         guard dataString.starts(with: "_") else {
+            scheduleConfigRetryIfNeeded()
             return
         }
 
@@ -475,17 +578,19 @@ struct ContentView: View {
 
         isApplyingDeviceValues = false
 
-        if awaitingConfigBlock1Response {
-            awaitingConfigBlock1Response = false
+        switch configReadPhase {
+        case .block1:
             if isNewFirmware {
                 terminalManager.addMessage("Firmware \(firmwareVersionLabel) — single config block (_1)")
+                finishInitialConfigRead()
             } else {
                 requestLegacyConfigBlock2()
             }
+        case .block2:
+            finishInitialConfigRead()
+        case .idle:
+            commitDeviceSnapshot()
         }
-
-        commitDeviceSnapshot()
-        hasReceivedInitialValues = true
     }
 
     func updateSelectedCapID(to newCapID: Int) {
