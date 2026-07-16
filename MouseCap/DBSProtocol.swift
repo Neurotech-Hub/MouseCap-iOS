@@ -43,6 +43,7 @@ enum DBSProtocol {
         return nil
     }
 
+    /// Current firmware continuous sync (`M0` included).
     static func buildContinuousCommand(
         amplitude: Int,
         frequency: Int,
@@ -50,14 +51,78 @@ enum DBSProtocol {
         activateOnDisconnect: Bool,
         capID: String
     ) -> String {
-        buildCommand(pairs: [
-            "M\(modeContinuous)",
+        buildCommand(pairs: continuousPairs(
+            amplitude: amplitude,
+            frequency: frequency,
+            pulseDuration: pulseDuration,
+            activateOnDisconnect: activateOnDisconnect,
+            capID: capID,
+            includeMode: true
+        ))
+    }
+
+    /// Pre-burst / no-`FW` devices: omit `M0`. Prefer the chunked builders below —
+    /// a single combined string overflows the legacy receive buffer once values grow
+    /// (e.g. `_A20,F80,P90,G1,N75` = 19 chars).
+    static func buildLegacyContinuousCommand(
+        amplitude: Int,
+        frequency: Int,
+        pulseDuration: Int,
+        activateOnDisconnect: Bool,
+        capID: String
+    ) -> String {
+        buildCommand(pairs: continuousPairs(
+            amplitude: amplitude,
+            frequency: frequency,
+            pulseDuration: pulseDuration,
+            activateOnDisconnect: activateOnDisconnect,
+            capID: capID,
+            includeMode: false
+        ))
+    }
+
+    /// Legacy sync as two short writes that each fit the classic ~18-byte device buffer.
+    /// Chunk 1 matches historical `_1` readback (`A`,`F`,`P`); chunk 2 carries `G`,`N`.
+    static func buildLegacyContinuousChunks(
+        amplitude: Int,
+        frequency: Int,
+        pulseDuration: Int,
+        activateOnDisconnect: Bool,
+        capID: Int
+    ) -> [String] {
+        [
+            buildCommand(pairs: [
+                "A\(amplitude)",
+                "F\(frequency)",
+                "P\(pulseDuration)"
+            ]),
+            buildCommand(pairs: [
+                "G\(activateOnDisconnect ? 1 : 0)",
+                "N\(capID)"
+            ])
+        ]
+    }
+
+    private static func continuousPairs(
+        amplitude: Int,
+        frequency: Int,
+        pulseDuration: Int,
+        activateOnDisconnect: Bool,
+        capID: String,
+        includeMode: Bool
+    ) -> [String] {
+        var pairs: [String] = []
+        if includeMode {
+            pairs.append("M\(modeContinuous)")
+        }
+        pairs.append(contentsOf: [
             "A\(amplitude)",
             "F\(frequency)",
             "P\(pulseDuration)",
             "G\(activateOnDisconnect ? 1 : 0)",
             "N\(capID)"
         ])
+        return pairs
     }
 
     static func buildBurstCommand(

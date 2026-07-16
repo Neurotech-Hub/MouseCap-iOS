@@ -74,7 +74,7 @@ Include `FW` in the `_1` readback on current firmware. The app shows **v0.0** un
 
 Sent when the user taps **Sync** in the app.
 
-### Continuous mode (`M0`)
+### Continuous mode — current firmware (`FW` present)
 
 ```
 _M0,A<amplitude>,F<frequency>,P<pulse_us>,G<0|1>,N<cap_id>
@@ -86,7 +86,32 @@ _M0,A<amplitude>,F<frequency>,P<pulse_us>,G<0|1>,N<cap_id>
 _M0,A50,F130,P90,G0,N0
 ```
 
-### Burst mode (`M1`)
+### Continuous mode — legacy (no `FW`)
+
+Pre-burst devices omit `M0` and have a small receive buffer (≈18 chars). A single combined sync overflows once amplitude reaches two digits:
+
+| Packet | Length | Result |
+|--------|--------|--------|
+| `_A5,F80,P90,G1,N75` | 18 | OK |
+| `_A20,F80,P90,G1,N75` | 19 | Dropped / ignored |
+
+The app therefore **chunks** legacy sync into two writes (80 ms apart), matching the historical `_1` readback shape:
+
+```
+_A<amplitude>,F<frequency>,P<pulse_us>
+_G<0|1>,N<cap_id>
+```
+
+**Example:**
+
+```
+_A20,F80,P90
+_G1,N75
+```
+
+(`N` is unpadded, as on original legacy sync.) Burst sync is not sent to these devices.
+
+### Burst mode (`M1`) — current firmware only
 
 ```
 _M1,A<amplitude>,P<pulse_us>,BP<period_ms>,IF<freq_hz>,BD<duration_ms>,G<0|1>,N<cap_id>

@@ -56,6 +56,10 @@ struct InfoView: View {
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.secondary)
 
+                Text("Legacy continuous (no FW, chunked): `_A50,F130,P90` then `_G0,N0`")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
+
                 Text("Example burst: `_M1,A50,P90,BP30000,IF130,BD10000,G0,N0`")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.secondary)

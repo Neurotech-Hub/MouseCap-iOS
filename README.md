@@ -62,9 +62,15 @@ The app communicates with the DBS device using a text-based protocol documented 
 
 ### Example messages
 
-Continuous sync:
+Continuous sync (current firmware):
 ```
 _M0,A50,F130,P90,G0,N0
+```
+
+Continuous sync (legacy, no `FW` — two chunks for small device buffer):
+```
+_A50,F130,P90
+_G0,N0
 ```
 
 Burst sync:

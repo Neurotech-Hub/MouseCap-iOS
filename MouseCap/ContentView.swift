@@ -50,6 +50,8 @@ struct ContentView: View {
     @State private var selectedCapID: String = "00"
     @State private var deviceBatteryLevel: Int = 100
     @State private var firmwareVersionWire: Int = 0
+    /// True only after a config response includes `FW`. Missing `FW` means legacy (pre-burst) hardware.
+    @State private var deviceReportsFirmwareVersion = false
     @State private var configReadPhase: ConfigReadPhase = .idle
     @State private var configRetryCount = 0
     @State private var isApplyingDeviceValues = false
@@ -373,6 +375,7 @@ struct ContentView: View {
         requireSync = false
         hasReceivedInitialValues = false
         firmwareVersionWire = 0
+        deviceReportsFirmwareVersion = false
         configReadPhase = .idle
         configRetryCount = 0
         cancelConfigReadTasks()
@@ -473,6 +476,23 @@ struct ContentView: View {
     }
 
     func syncControls() {
+        if !deviceReportsFirmwareVersion {
+            // Legacy hardware: omit M0; burst mode is unsupported; chunk to fit device buffer.
+            if stimulationMode == .burst {
+                terminalManager.addMessage("Legacy device — Burst sync not supported; use Continuous.")
+                return
+            }
+            let chunks = DBSProtocol.buildLegacyContinuousChunks(
+                amplitude: Int(amplitude),
+                frequency: Int(frequency),
+                pulseDuration: Int(pulseDuration),
+                activateOnDisconnect: activateOnDisconnect,
+                capID: Int(selectedCapID) ?? 0
+            )
+            sendLegacyChunkedCommands(chunks)
+            return
+        }
+
         let capID = String(format: "%02d", Int(selectedCapID) ?? 0)
         let commandString: String
 
@@ -502,6 +522,29 @@ struct ContentView: View {
             commitDeviceSnapshot()
         } else {
             terminalManager.addMessage("Command exceeds characteristic length (\(commandString.count) > \(maxCharacteristicLength))")
+        }
+    }
+
+    func sendLegacyChunkedCommands(_ chunks: [String]) {
+        for (index, chunk) in chunks.enumerated() {
+            if chunk.count > maxCharacteristicLength {
+                terminalManager.addMessage("Chunk exceeds characteristic length (\(chunk.count) > \(maxCharacteristicLength)): \(chunk)")
+                return
+            }
+            let delayMs = UInt64(index) * 80
+            Task {
+                if delayMs > 0 {
+                    try? await Task.sleep(for: .milliseconds(delayMs))
+                }
+                await MainActor.run {
+                    guard bluetoothManager.isConnected else { return }
+                    bluetoothManager.writeValue(chunk)
+                    terminalManager.addMessage("Synced (\(index + 1)/\(chunks.count)): \(chunk)")
+                    if index == chunks.count - 1 {
+                        commitDeviceSnapshot()
+                    }
+                }
+            }
         }
     }
 
@@ -573,10 +616,15 @@ struct ContentView: View {
                 deviceBatteryLevel = DBSProtocol.batteryPercentage(fromMillivolts: value)
             case .firmwareVersion:
                 firmwareVersionWire = value
+                deviceReportsFirmwareVersion = true
             }
         }
 
         isApplyingDeviceValues = false
+
+        if isNewFirmware {
+            deviceReportsFirmwareVersion = true
+        }
 
         switch configReadPhase {
         case .block1:
